@@ -1,0 +1,155 @@
+import os,time,sys 
+from pylab import loadtxt,savetxt,average,array
+mdir='ppmdir' 
+fdir='ppfdir' 
+fname='ppfname'
+
+sys.path.append(mdir) 
+from ilibq import core 
+from ilibq import geometry as gm
+mod = core.Core() 
+mod.openModel(fdir,fname)
+nmedia = gm.getNmedia(mod)
+
+# change the values in the model to initial ones and writes the files
+dicCatg={'K':'lpf.8','L':'lpf.9','T':'btn.13','n':'btn.11','aL':'AL','aT':'TRPT','aZ':'TRPV'}
+prtMF,prtMT,prtPH=False,False,False
+kparm=[];parm=[];sparm=[];mparm=[];pparm=[];uparm=[];iparm=[]
+
+f1=open(fdir+os.sep+'pest_run.txt','r');
+for l in f1:
+    if len(l)>3: parm.append(l.split())
+f1.close()
+
+for pl in parm:
+    name=pl[0];v0=float(pl[1]);grp=name[:2];catg=name[2];media = 0
+    if '$' in name: media = int(name.split('$')[1][1:]) # first letter is m
+    if grp=='MF':
+        prtMF=True
+        if catg=='x': # xcoord of the zone center
+            zn=name[3:];print zn,v0
+            iz = mod.diczone['Modflow'].getIndexFromName('lpf.8',zn)
+            coo = mod.diczone['Modflow'].dic['lpf.8']['coords'][iz]
+            x,y = zip(*coo);ctr=average(x)
+            x1 = array(x) + v0-ctr
+            mod.diczone['Modflow'].dic['lpf.8']['coords'][iz] = zip(x1,y)
+        elif catg=='y': # xcoord of the zone center
+            zn=name[3:];#print zn,v0
+            iz = mod.diczone['Modflow'].getIndexFromName('lpf.8',zn)
+            coo = mod.diczone['Modflow'].dic['lpf.8']['coords'][iz]
+            x,y = zip(*coo);ctr=average(y)
+            y1 = array(y) + v0-ctr
+            mod.diczone['Modflow'].dic['lpf.8']['coords'][iz] = zip(x,y1)
+        else :
+            if name[3:6]!='bak':
+                zn=name[3:];#print zn,v0
+                mod.diczone['Modflow'].setValueFromName(dicCatg[catg],zn,str(v0))
+            else : 
+                for im in range(nmedia):
+                    mod.dicval['Modflow'][dicCatg[catg]][im]=v0
+    elif grp=='MT':
+        prtMT=True
+        if catg=='P':
+            if media==None: pn=name[3:]
+            else : pn = name.split('$')[0][3:]
+            for im in range(nmedia):
+                mod.dicval['Mt3dms'][dicCatg[pn]][im]=v0
+        elif catg=='T': # values of zone
+            zn=name[3:];#print zn,v0
+            mod.diczone['Mt3dms'].setValueFromName(dicCatg[catg],zn,str(v0))
+        elif catg=='x': # xcoord of the zone center
+            zn=name[3:];#print zn,v0
+            iz = mod.diczone['Mt3dms'].getIndexFromName('btn.13',zn)
+            coo = mod.diczone['Mt3dms'].dic['btn.13']['coords'][iz]
+            x,y = zip(*coo);dx=x[1]-x[0]
+            x1 = [v0+dx/2,v0-dx/2]
+            mod.diczone['Mt3dms'].dic['btn.13']['coords'][iz] = zip(x1,y)
+        elif catg=='y': # ycoord of the zone center
+            zn=name[3:];#print zn,v0
+            iz = mod.diczone['Mt3dms'].getIndexFromName('btn.13',zn)
+            coo = mod.diczone['Mt3dms'].dic['btn.13']['coords'][iz]
+            x,y = zip(*coo);dy=y[1]-y[0]
+            y1 = [v0+dy/2,v0-dy/2]
+            mod.diczone['Mt3dms'].dic['btn.13']['coords'][iz] = zip(x,y1)
+    elif grp=='PH':
+        prtPH=True
+        if catg=='P':
+            pn=name[3:];
+            mod.setValueFromName('Mt3dms',dicCatg[pn],v0)
+        if catg=='k':
+            pn=name[3:];pn=pn[:-1] # last is for the parm number
+            kparm.append((pn,int(name[-1:]),v0))
+        if catg=='s':
+            pn=name[3:];pn=pn[:-1] # last is for the solution number
+            sparm.append((pn,int(name[-1:]),v0)) # last for the solution nb
+        if catg=='p':
+            pn=name[3:];pn=pn[:-1] # last is for the solution number
+            pparm.append((pn,int(name[-1:]),v0)) # last for the solution nb
+        if catg=='m':
+            pn=name[3:];pn=pn[:-1] # last is for the solution number
+            mparm.append((pn,int(name[-1:]),v0)) # last for the solution nb
+        if catg=='u':
+            pn=name[3:];pn=pn[:-1] # last is for the solution number
+            uparm.append((pn,int(name[-1:]),v0)) # last for the solution nb
+        if catg=='i':
+            pn=name[3:];pn=pn[:-1] # last is for the solution number
+            iparm.append((pn,int(name[-1:]),v0)) # last for the solution nb
+            
+if prtMF: mod.writeModel('Modflow',info=False)
+if prtMT: mod.writeModel('Mt3dms',info=False)
+if prtPH:
+        kdict=mod.addin.pht3d.getChemDict('Rates')
+        sdict=mod.addin.pht3d.getChemDict('Solutions')
+        mdict=mod.addin.pht3d.getChemDict('Kinetic_Minerals')
+        pdict=mod.addin.pht3d.getChemDict('Phases')
+        udict=mod.addin.pht3d.getChemDict('Surface')
+        #idict=mod.addin.pht3d.getImmobDict('Solutions')
+        if len(kparm)>0:
+            lesp,nparm,lval=zip(*kparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=kdict['rows'].index(sp);
+                kdict['data'][ind][int(nparm[i])+1]=lval[i]
+            mod.addin.pht3d.setChemDict('Rates',kdict)
+        if len(sparm)>0:
+            lesp,nparm,lval=zip(*sparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=sdict['rows'].index(sp);
+                sdict['data'][ind][int(nparm[i])+1]=lval[i]
+            mod.addin.pht3d.setChemDict('Solutions',sdict)
+        if len(mparm)>0:
+            lesp,nparm,lval=zip(*mparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=mdict['rows'].index(sp);
+                mdict['data'][ind][int(nparm[i])+1]=lval[i]
+            mod.addin.pht3d.setChemDict('Kinetic_Minerals',mdict)
+        if len(pparm)>0:
+            lesp,nparm,lval=zip(*pparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=pdict['rows'].index(sp);
+                pdict['data'][ind][int(nparm[i]+1)*2]=lval[i]
+            mod.addin.pht3d.setChemDict('Phases',pdict)
+        if len(uparm)>0:
+            lesp,nparm,lval=zip(*uparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=udict['rows'].index(sp);
+                udict['data'][ind][int(nparm[i])+1]=lval[i]
+            mod.addin.pht3d.setChemDict('Surface',udict)
+        if len(iparm)>0:
+            lesp,nparm,lval=zip(*iparm)
+            for i in range(len(lesp)):
+                sp=lesp[i];ind=idict['rows'].index(sp);
+                idict['data'][ind][int(nparm[i])+1]=lval[i]
+            mod.addin.pht3d.setImmobDict('Solutions',idict)
+        mod.writeModel('Pht3d',info=False)
+
+def setThermo(mod,poro):
+    '''set the thermal propserties from porosity if VDF and RCT modules active'''
+    rho_s,rho_c_w,lb_w,lb_s,c_s = 2650,4.18e6,0.578,2.8,880
+    lb_m = poro*lb_w+(1-poro)*lb_s
+    tunit = mod.getValueFromName('Modflow','ITMUNI')
+    tlist = (('years',91.53e6),('days',86400),('hours',3600),('min',60))
+    funit = tlist[zip(*tlist)[0].index(tunit)][1]
+    Dh = lb_m/(poro*rho_w*c_w)*funit
+    dens = (1-poro)*rho_s
+    Kd = c_s/rho_c_w
+    mod.setValueFromName('Mt3dms',)

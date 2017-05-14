@@ -1,0 +1,44 @@
+import os,time,sys 
+from scipy import concatenate
+
+from pylab import loadtxt,savetxt 
+mdir='ppmdir' 
+fdir='ppfdir' 
+fname='ppfname' 
+tlist=pptime
+sys.path.append(mdir) 
+from ilibq import core
+mod=core.Core() 
+mod.fileDir,mod.fileName=fdir,fname
+mod.openModel(fdir,fname) 
+lnames=pponames
+iper=mod.getTlist2();
+spec=ppospec;
+
+fn=fdir+os.sep+'pest_out.txt' 
+f1=open(fn,'w') 
+
+for iz in range(len(lnames)): # list of obs zones names
+    n,nsp=0,len(spec[iz])
+    zname=lnames[iz]
+    for ie in range(nsp):
+        e = [spec[iz][ie]]
+        a = zname.split('$')
+        if len(a)>1: 
+            layer = int(a[1][1:]);zname=a[0]
+        else : layer=0
+        if e ==['Head']: typ='B0';group='Flow';
+        elif e ==['Tracer']: typ='B1';group='Transport';
+        else: typ='B1';group='Chemistry';
+        t,d0,labels=mod.onPtObs(typ,iper,group,zname,e,layer) 
+        if ie==0 : d1=d0*1
+        else : d1=concatenate([d1,d0],axis=1)
+    t2=tlist[iz]
+    for it in range(len(t)):
+        if n>len(t2)-1:break
+        if abs(t[it]-t2[n])<1e-3:  
+            f1.write('%9.4f '%(t[it]))  
+            for ie in range(nsp):
+                f1.write('%9.4f '%(d1[it,ie]))
+            f1.write('\n');n+=1 
+f1.close() 
